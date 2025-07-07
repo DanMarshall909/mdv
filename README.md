@@ -4,13 +4,14 @@ A fast, cross-platform markdown file viewer with native HTML rendering.
 
 ## Features
 
-- **Native HTML rendering** - Converts markdown to HTML and renders with native controls
+- **Full HTML rendering** - Opens markdown in your default browser with complete HTML support
+- **Mermaid diagram support** - Renders actual interactive Mermaid diagrams
 - **Cross-platform** - Runs on Windows, macOS, and Linux
 - **Lightweight** - Single executable, no installation required
 - **Fast startup** - Optimized for performance
-- **GitHub-style rendering** - Professional appearance with proper typography
-- **ESC to quit** - Simple keyboard shortcut
-- **Mermaid diagram detection** - Identifies and labels mermaid diagrams
+- **GitHub-style styling** - Professional appearance with dark mode support
+- **Smart file detection** - Automatically adds .md extension if needed
+- **Auto-cleanup** - Temporary files are cleaned up automatically
 
 ## Installation
 
@@ -60,26 +61,40 @@ mdv
 
 ## Mermaid Diagrams
 
-The viewer detects Mermaid diagram code blocks and displays them with a special indicator:
+The viewer fully supports Mermaid diagrams with interactive rendering:
 
 ```markdown
 ```mermaid
 graph TD
-    A[Start] --> B[End]
+    A[Start] --> B{Decision}
+    B -->|Yes| C[Action]
+    B -->|No| D[End]
 ```
 ```
 
-## Keyboard Shortcuts
+Diagrams are rendered as interactive SVG with zoom and pan capabilities.
 
-- **ESC** - Quit the application
-- **Mouse wheel** - Scroll content
-- **Scroll bar** - Navigate long documents
+## How it Works
+
+1. `mdv` converts your markdown to HTML using Markdig
+2. Creates a temporary HTML file with GitHub-style CSS and Mermaid support
+3. Opens the file in your default browser
+4. Auto-closes the launcher after 3 seconds
+5. Cleans up temporary files when you close the browser
+
+## Browser Features
+
+- **Dark mode support** - Automatically adapts to system preferences
+- **Print-friendly** - Optimized CSS for printing
+- **Responsive design** - Works on any screen size
+- **ESC to close** - Browser keyboard shortcut support
 
 ## Technical Details
 
-- Built with [Avalonia UI](https://avaloniaui.net/) for cross-platform compatibility
+- Built with [Avalonia UI](https://avaloniaui.net/) for cross-platform launcher
 - Uses [Markdig](https://github.com/xoofx/markdig) for markdown parsing
-- Native control rendering for optimal performance
+- Leverages native browser engines for HTML rendering
+- [Mermaid.js](https://mermaid.js.org/) for diagram rendering
 - Self-contained executables with minimal dependencies
 
 ## Contributing
