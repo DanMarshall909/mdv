@@ -7,12 +7,9 @@
         Title="Markdown Viewer"
         WindowStartupLocation="CenterScreen">
     
-    <Grid>
-        <TextBlock x:Name="StatusText" 
-                   Text="Opening default browser..."
-                   HorizontalAlignment="Center"
-                   VerticalAlignment="Center"
-                   FontSize="16"
-                   Foreground="Gray" />
-    </Grid>
+    <ScrollViewer>
+        <Border Background="White" Margin="20" CornerRadius="8" Padding="40">
+            <StackPanel x:Name="ContentPanel" />
+        </Border>
+    </ScrollViewer>
 </Window>
