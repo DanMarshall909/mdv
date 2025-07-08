@@ -16,6 +16,10 @@ namespace MarkdownViewer;
 public partial class MainWindow : Window
 {
     private readonly MarkdownPipeline _pipeline;
+    private bool _useBrowserMode = false;
+    private bool _isFullscreen = false;
+    private WindowState _previousWindowState;
+    private Border? _escapeOverlay;
     
     public MainWindow()
     {
@@ -33,18 +37,309 @@ public partial class MainWindow : Window
     {
         if (e.Key == Key.Escape)
         {
-            Close();
+            if (_isFullscreen)
+            {
+                ExitFullscreen();
+            }
+            else
+            {
+                Close();
+            }
         }
+        else if (e.Key == Key.B && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            ToggleDisplayMode();
+        }
+        else if (e.Key == Key.F11)
+        {
+            ToggleFullscreen();
+        }
+        else if (e.Key == Key.C && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            if (e.KeyModifiers.HasFlag(KeyModifiers.Shift))
+            {
+                CopyAsRichText();
+            }
+            else if (e.KeyModifiers.HasFlag(KeyModifiers.Alt))
+            {
+                CopyAsHtml();
+            }
+            else
+            {
+                CopyAsPlainText();
+            }
+        }
+        else if (e.Key == Key.M && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            CopyAsMarkdown();
+        }
+    }
+    
+    private async void ToggleDisplayMode()
+    {
+        _useBrowserMode = !_useBrowserMode;
+        
+        // Show a brief notification
+        var originalTitle = Title;
+        Title = _useBrowserMode ? "Mode: Browser" : "Mode: In-App";
+        
+        // Restore title after 1 second
+        await Task.Delay(1000);
+        Title = originalTitle;
+        
+        // Reload current content with new mode
+        await ReloadCurrentContent();
+    }
+    
+    private async Task ReloadCurrentContent()
+    {
+        var args = Environment.GetCommandLineArgs();
+        if (args.Length > 1)
+        {
+            var filePath = args[1];
+            if (File.Exists(filePath))
+            {
+                var content = await File.ReadAllTextAsync(filePath);
+                if (_useBrowserMode)
+                {
+                    await RenderMarkdownInBrowser(content);
+                }
+                else
+                {
+                    await RenderMarkdownInApp(content);
+                }
+            }
+        }
+    }
+    
+    private void ToggleFullscreen()
+    {
+        if (_isFullscreen)
+        {
+            ExitFullscreen();
+        }
+        else
+        {
+            EnterFullscreen();
+        }
+    }
+    
+    private void EnterFullscreen()
+    {
+        _previousWindowState = WindowState;
+        _isFullscreen = true;
+        
+        WindowState = WindowState.FullScreen;
+        SystemDecorations = SystemDecorations.None;
+        
+        ShowEscapeOverlay();
+    }
+    
+    private void ExitFullscreen()
+    {
+        _isFullscreen = false;
+        
+        WindowState = _previousWindowState;
+        SystemDecorations = SystemDecorations.Full;
+        
+        HideEscapeOverlay();
+    }
+    
+    private void ShowEscapeOverlay()
+    {
+        if (_escapeOverlay != null) return;
+        
+        _escapeOverlay = new Border
+        {
+            Background = new SolidColorBrush(Color.FromArgb(180, 0, 0, 0)),
+            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
+            VerticalAlignment = Avalonia.Layout.VerticalAlignment.Top,
+            Margin = new Avalonia.Thickness(0, 20, 0, 0),
+            CornerRadius = new Avalonia.CornerRadius(15),
+            Padding = new Avalonia.Thickness(20, 10, 20, 10),
+            Child = new TextBlock
+            {
+                Text = "Press ESC to exit fullscreen",
+                Foreground = Brushes.White,
+                FontSize = 14
+            }
+        };
+        
+        // Add overlay to the main grid
+        if (Content is ScrollViewer scrollViewer && scrollViewer.Content is Border border)
+        {
+            var grid = new Grid();
+            grid.Children.Add(border);
+            grid.Children.Add(_escapeOverlay);
+            scrollViewer.Content = grid;
+        }
+        
+        // Auto-hide after 3 seconds
+        var timer = new System.Timers.Timer(3000);
+        timer.Elapsed += (s, e) =>
+        {
+            timer.Stop();
+            Avalonia.Threading.Dispatcher.UIThread.Post(HideEscapeOverlay);
+        };
+        timer.Start();
+    }
+    
+    private void HideEscapeOverlay()
+    {
+        if (_escapeOverlay == null) return;
+        
+        // Remove overlay from the grid
+        if (Content is ScrollViewer scrollViewer && scrollViewer.Content is Grid grid)
+        {
+            grid.Children.Remove(_escapeOverlay);
+            if (grid.Children.Count == 1)
+            {
+                scrollViewer.Content = grid.Children[0];
+            }
+        }
+        
+        _escapeOverlay = null;
+    }
+    
+    private void CopyAsPlainText()
+    {
+        var plainText = ExtractPlainText();
+        CopyToClipboard(plainText);
+        ShowCopyNotification("Copied as plain text");
+    }
+    
+    private void CopyAsRichText()
+    {
+        // For now, use plain text - rich text requires more complex implementation
+        var plainText = ExtractPlainText();
+        CopyToClipboard(plainText);
+        ShowCopyNotification("Copied as rich text");
+    }
+    
+    private void CopyAsHtml()
+    {
+        var html = ExtractHtml();
+        CopyToClipboard(html);
+        ShowCopyNotification("Copied as HTML");
+    }
+    
+    private void CopyAsMarkdown()
+    {
+        var markdown = ExtractMarkdown();
+        CopyToClipboard(markdown);
+        ShowCopyNotification("Copied as markdown");
+    }
+    
+    private string ExtractPlainText()
+    {
+        var text = new StringBuilder();
+        ExtractTextFromChildren(ContentPanel.Children, text);
+        return text.ToString();
+    }
+    
+    private void ExtractTextFromChildren(Avalonia.Controls.Controls children, StringBuilder text)
+    {
+        foreach (var child in children)
+        {
+            if (child is TextBlock textBlock)
+            {
+                text.AppendLine(textBlock.Text);
+            }
+            else if (child is SelectableTextBlock selectableTextBlock)
+            {
+                text.AppendLine(selectableTextBlock.Text);
+            }
+            else if (child is Panel panel)
+            {
+                ExtractTextFromChildren(panel.Children, text);
+            }
+            else if (child is Border border && border.Child != null)
+            {
+                if (border.Child is Panel borderPanel)
+                {
+                    ExtractTextFromChildren(borderPanel.Children, text);
+                }
+                else if (border.Child is TextBlock borderText)
+                {
+                    text.AppendLine(borderText.Text);
+                }
+            }
+        }
+    }
+    
+    private string ExtractHtml()
+    {
+        // Return the current markdown converted to HTML
+        var args = Environment.GetCommandLineArgs();
+        if (args.Length > 1)
+        {
+            var filePath = args[1];
+            if (File.Exists(filePath))
+            {
+                var content = File.ReadAllText(filePath);
+                return Markdown.ToHtml(content, _pipeline);
+            }
+        }
+        return "";
+    }
+    
+    private string ExtractMarkdown()
+    {
+        // Return the original markdown content
+        var args = Environment.GetCommandLineArgs();
+        if (args.Length > 1)
+        {
+            var filePath = args[1];
+            if (File.Exists(filePath))
+            {
+                return File.ReadAllText(filePath);
+            }
+        }
+        return "";
+    }
+    
+    private async void CopyToClipboard(string text)
+    {
+        try
+        {
+            var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
+            if (clipboard != null)
+            {
+                await clipboard.SetTextAsync(text);
+            }
+        }
+        catch (Exception)
+        {
+            // Silently ignore clipboard errors
+        }
+    }
+    
+    private async void ShowCopyNotification(string message)
+    {
+        var originalTitle = Title;
+        Title = message;
+        await Task.Delay(1000);
+        Title = originalTitle;
     }
     
     private async void LoadMarkdownFromArgs()
     {
         var args = Environment.GetCommandLineArgs();
         
-        if (args.Length > 1)
+        // Parse command line arguments
+        var parsedArgs = ArgumentParser.Parse(args);
+        _useBrowserMode = parsedArgs.BrowserMode;
+        
+        if (parsedArgs.FullscreenMode)
         {
-            var filePath = args[1];
-            
+            // Start in fullscreen after loading
+            Loaded += (s, e) => ToggleFullscreen();
+        }
+        
+        var filePath = parsedArgs.FilePath;
+        
+        if (!string.IsNullOrEmpty(filePath))
+        {
             // Try the file as-is first
             if (!File.Exists(filePath))
             {
@@ -64,20 +359,20 @@ public partial class MainWindow : Window
                 try
                 {
                     var content = await File.ReadAllTextAsync(filePath);
-                    await RenderMarkdownInApp(content);
-                    Title = $"Markdown Viewer - {Path.GetFileName(filePath)}";
+                    await RenderMarkdown(content);
+                    Title = $"Markdown Viewer - {Path.GetFileName(filePath)} ({(_useBrowserMode ? "Browser" : "In-App")})";
                 }
                 catch (Exception ex)
                 {
                     var errorMarkdown = $"# Error loading file\n\n```\n{ex.Message}\n```";
-                    await RenderMarkdownInApp(errorMarkdown);
+                    await RenderMarkdown(errorMarkdown);
                     Title = "Markdown Viewer - Error";
                 }
             }
             else
             {
                 var notFoundMarkdown = $"# File not found\n\nThe file `{filePath}` could not be found.";
-                await RenderMarkdownInApp(notFoundMarkdown);
+                await RenderMarkdown(notFoundMarkdown);
                 Title = "Markdown Viewer - File Not Found";
             }
         }
@@ -97,21 +392,33 @@ public partial class MainWindow : Window
             try
             {
                 var content = await File.ReadAllTextAsync(usageFilePath);
-                await RenderMarkdownInApp(content);
+                await RenderMarkdown(content);
                 Title = "Markdown Viewer - Usage";
             }
             catch (Exception ex)
             {
                 var errorMarkdown = $"# Error loading usage file\n\n```\n{ex.Message}\n```";
-                await RenderMarkdownInApp(errorMarkdown);
+                await RenderMarkdown(errorMarkdown);
                 Title = "Markdown Viewer - Error";
             }
         }
         else
         {
-            var defaultMarkdown = "# Markdown Viewer\n\nUsage: `mdv <file.md>`\n\nPress **ESC** to quit.";
-            await RenderMarkdownInApp(defaultMarkdown);
+            var defaultMarkdown = new ArgumentParser().GetUsageText();
+            await RenderMarkdown(defaultMarkdown);
             Title = "Markdown Viewer - Usage";
+        }
+    }
+    
+    private async Task RenderMarkdown(string markdown)
+    {
+        if (_useBrowserMode)
+        {
+            await RenderMarkdownInBrowser(markdown);
+        }
+        else
+        {
+            await RenderMarkdownInApp(markdown);
         }
     }
     
@@ -134,6 +441,73 @@ public partial class MainWindow : Window
         }
         
         await Task.CompletedTask;
+    }
+    
+    private async Task RenderMarkdownInBrowser(string markdown)
+    {
+        var htmlContent = GetFullHtmlTemplate(markdown);
+        var tempFile = Path.GetTempFileName() + ".html";
+        await File.WriteAllTextAsync(tempFile, htmlContent);
+        
+        // Open in default browser
+        try
+        {
+            if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Linux))
+            {
+                Process.Start("xdg-open", tempFile);
+            }
+            else if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.OSX))
+            {
+                Process.Start("open", tempFile);
+            }
+            else
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = tempFile,
+                    UseShellExecute = true
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            // If browser opening fails, show content in the Avalonia window
+            ContentPanel.Children.Clear();
+            ContentPanel.Children.Add(new TextBlock
+            {
+                Text = $"Could not open browser: {ex.Message}\n\nFile saved to: {tempFile}",
+                FontSize = 16,
+                TextAlignment = TextAlignment.Center,
+                Margin = new Avalonia.Thickness(0, 100, 0, 0)
+            });
+            return;
+        }
+        
+        // For the Avalonia window, show a simple message
+        ContentPanel.Children.Clear();
+        ContentPanel.Children.Add(new StackPanel
+        {
+            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
+            VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+            Children =
+            {
+                new TextBlock
+                {
+                    Text = "🌐 Markdown opened in browser",
+                    FontSize = 18,
+                    FontWeight = FontWeight.Bold,
+                    TextAlignment = TextAlignment.Center,
+                    Margin = new Avalonia.Thickness(0, 0, 0, 10)
+                },
+                new TextBlock
+                {
+                    Text = "Press Ctrl+B to switch to in-app mode\nPress ESC to close",
+                    FontSize = 14,
+                    TextAlignment = TextAlignment.Center,
+                    Foreground = new SolidColorBrush(Color.FromRgb(106, 115, 125))
+                }
+            }
+        });
     }
     
     private Control? CreateControlFromHtmlNode(HtmlNode node)
@@ -509,6 +883,138 @@ public partial class MainWindow : Window
         {
             // Silently ignore browser opening errors
         }
+    }
+    
+    private string GetFullHtmlTemplate(string markdown)
+    {
+        var markdownEscaped = markdown.Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "");
+        
+        return @"<!DOCTYPE html>
+<html>
+<head>
+    <meta charset=""UTF-8"">
+    <meta name=""viewport"" content=""width=device-width, initial-scale=1.0"">
+    <title>Markdown Viewer</title>
+    <script src=""https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js""></script>
+    <script src=""https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js""></script>
+    <script src=""https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-core.min.js""></script>
+    <script src=""https://cdn.jsdelivr.net/npm/prismjs@1.29.0/plugins/autoloader/prism-autoloader.min.js""></script>
+    <link href=""https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism.min.css"" rel=""stylesheet"">
+    <script src=""https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js""></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px 20px;
+            background: #fff;
+        }
+        h1, h2, h3, h4, h5, h6 {
+            color: #2c3e50;
+            margin-top: 30px;
+            margin-bottom: 15px;
+        }
+        h1 { font-size: 2em; }
+        h2 { font-size: 1.6em; }
+        h3 { font-size: 1.4em; }
+        code {
+            background: #f8f8f8;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Consolas', 'Monaco', monospace;
+        }
+        pre {
+            background: #f8f8f8;
+            padding: 16px;
+            border-radius: 6px;
+            overflow-x: auto;
+            border: 1px solid #e1e8ed;
+        }
+        pre code {
+            background: transparent;
+            padding: 0;
+        }
+        blockquote {
+            border-left: 4px solid #dfe2e5;
+            padding-left: 16px;
+            margin: 12px 0;
+            color: #6a737d;
+            font-style: italic;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 12px 0;
+        }
+        th, td {
+            border: 1px solid #dfe2e5;
+            padding: 12px 8px;
+            text-align: left;
+        }
+        th {
+            background: #f6f8fa;
+            font-weight: bold;
+        }
+        ul, ol {
+            padding-left: 24px;
+        }
+        li {
+            margin: 3px 0;
+        }
+        a {
+            color: #0366d6;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        .mermaid {
+            background: #f0f8ff;
+            border: 2px solid #4facfe;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 12px 0;
+        }
+    </style>
+</head>
+<body>
+    <div id=""content""></div>
+    <script>
+        // Configure marked
+        marked.setOptions({
+            highlight: function(code, lang) {
+                if (lang === 'mermaid') {
+                    return '<div class=""mermaid"">' + code + '</div>';
+                }
+                return code;
+            },
+            breaks: true,
+            gfm: true
+        });
+        
+        // Initialize mermaid
+        mermaid.initialize({ startOnLoad: true });
+        
+        // Render markdown
+        const markdown = """ + markdownEscaped + @""";
+        const html = marked.parse(markdown);
+        const cleanHtml = DOMPurify.sanitize(html);
+        document.getElementById('content').innerHTML = cleanHtml;
+        
+        // Re-run mermaid after content is loaded
+        mermaid.run();
+        
+        // Handle ESC key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                window.close();
+            }
+        });
+    </script>
+</body>
+</html>";
     }
     
     private string GetMermaidHtmlTemplate(string mermaidCode)
