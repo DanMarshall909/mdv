@@ -165,13 +165,22 @@ public partial class MainWindow : Window
             }
         };
         
-        // Add overlay to the main grid
-        if (Content is ScrollViewer scrollViewer && scrollViewer.Content is Border border)
+        // Add overlay to the main content - create grid wrapper if needed
+        if (Content is ScrollViewer scrollViewer)
         {
-            var grid = new Grid();
-            grid.Children.Add(border);
-            grid.Children.Add(_escapeOverlay);
-            scrollViewer.Content = grid;
+            var currentContent = scrollViewer.Content;
+            if (currentContent != null && !(currentContent is Grid))
+            {
+                var grid = new Grid();
+                scrollViewer.Content = null; // Remove first
+                grid.Children.Add((Control)currentContent);
+                grid.Children.Add(_escapeOverlay);
+                scrollViewer.Content = grid;
+            }
+            else if (currentContent is Grid existingGrid)
+            {
+                existingGrid.Children.Add(_escapeOverlay);
+            }
         }
         
         // Auto-hide after 3 seconds
